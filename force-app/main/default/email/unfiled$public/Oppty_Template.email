@@ -1,0 +1,5 @@
+Hi buddy,
+
+heres your Thread Id:
+
+{!Opportunity.Thread_Id__c}

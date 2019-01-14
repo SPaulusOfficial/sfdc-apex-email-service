@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EmailServicesFunction xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apexClass>TopDkExchangeInboundHandler</apexClass>
+    <attachmentOption>All</attachmentOption>
+    <authenticationFailureAction>Bounce</authenticationFailureAction>
+    <authorizationFailureAction>Bounce</authorizationFailureAction>
+    <authorizedSenders>netcompany.com,rasmuszimmernielsen@gmail.com</authorizedSenders>
+    <emailServicesAddresses>
+        <developerName>Main</developerName>
+        <isActive>true</isActive>
+        <localPart>topdkexchangeinbound</localPart>
+        <runAsUser>test-vviu2m4d6gxl@example.com</runAsUser>
+    </emailServicesAddresses>
+    <errorRoutingAddress>rzn@netcompany.com</errorRoutingAddress>
+    <functionInactiveAction>Bounce</functionInactiveAction>
+    <functionName>TopDkExchangeInbound</functionName>
+    <isActive>true</isActive>
+    <isAuthenticationRequired>true</isAuthenticationRequired>
+    <isErrorRoutingEnabled>true</isErrorRoutingEnabled>
+    <isTextAttachmentsAsBinary>true</isTextAttachmentsAsBinary>
+    <isTlsRequired>false</isTlsRequired>
+    <overLimitAction>Bounce</overLimitAction>
+</EmailServicesFunction>
