@@ -22,7 +22,7 @@
             "networksEnabled": true,
             "s1DesktopEnabled": true,
             "s1EncryptedStoragePref2": false,
-            "EnhancedEmailEnabled": true
+            "enhancedEmailEnabled": true
         },
         "omniChannelSettings": {
             "enableOmniChannel": true
