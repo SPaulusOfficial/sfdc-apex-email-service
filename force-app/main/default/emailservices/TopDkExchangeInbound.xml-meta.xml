@@ -8,7 +8,7 @@
         <developerName>Main</developerName>
         <isActive>true</isActive>
         <localPart>topdkexchangeinbound</localPart>
-        <runAsUser>test-c6ipmjsqnojg@example.com</runAsUser>
+        <runAsUser>test-azbafjrbin0h@example.com</runAsUser>
     </emailServicesAddresses>
     <errorRoutingAddress>rzn@netcompany.com</errorRoutingAddress>
     <functionInactiveAction>Bounce</functionInactiveAction>

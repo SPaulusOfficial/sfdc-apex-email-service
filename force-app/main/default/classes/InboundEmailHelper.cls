@@ -37,7 +37,7 @@ public inherited sharing class InboundEmailHelper {
 
         String reference = findReference();
         if(reference == null){
-            System.debug('Inbound email did not contain a reference pattern matching what was configured. Exiting.');
+            System.debug('Inbound email did not contain a reference pattern matching what was configured. Exiting...');
             return;
         }
 

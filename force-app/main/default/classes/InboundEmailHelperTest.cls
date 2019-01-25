@@ -49,7 +49,7 @@ private class InboundEmailHelperTest {
 
         try {
             InboundEmailHelper helper = new InboundEmailHelper(email, sobjType, sobjField);
-            System.assert(false, 'InboundEmailHelper must not accept null params');
+            System.assert(false, 'InboundEmailHelper must not accept null params.');
         } catch (InvalidParameterValueException ex) {
             System.assert(true);
         }
@@ -70,7 +70,7 @@ private class InboundEmailHelperTest {
 
     @isTest static void testGetMessageDate(){
         String jsonString = '[{"value":"rasmuszimmernielsen@gmail.com","name":"Return-Path"},{"value":"Thu, 24 Jan 2019 16:01:43 +0100","name":"Date"}]';
-        List<Messaging.InboundEmail.Header> headers = (List<Messaging.InboundEmail.Header>) JSON.deserialize(jsonString.escapeEcmaScript(), List<Messaging.InboundEmail.Header>.class);
+        List<Messaging.InboundEmail.Header> headers = (List<Messaging.InboundEmail.Header>) JSON.deserialize(jsonString, List<Messaging.InboundEmail.Header>.class);
         Datetime expectedDate = Datetime.valueOf('Thu, 24 Jan 2019 16:01:43 +0100');
         Datetime messageDate = InboundEmailHelper.getMessageDate(headers);
 
