@@ -4,7 +4,6 @@
     <attachmentOption>All</attachmentOption>
     <authenticationFailureAction>Bounce</authenticationFailureAction>
     <authorizationFailureAction>Bounce</authorizationFailureAction>
-    <authorizedSenders>netcompany.com,rasmuszimmernielsen@gmail.com</authorizedSenders>
     <emailServicesAddresses>
         <developerName>Main</developerName>
         <isActive>true</isActive>
