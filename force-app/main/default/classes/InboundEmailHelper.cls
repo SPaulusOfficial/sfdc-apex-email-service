@@ -4,38 +4,55 @@ public inherited sharing class InboundEmailHelper {
     private static final String DEFAULT_PATTERN_END = ':ref';
     private Messaging.InboundEmail email;
     private SObjectType sObjectType;
-    private SObjectField field;
+    private SObjectField sObjectField;
     private String patternStart;
     private String patternEnd;
     
     @testVisible
     private EmailMessage emailMessage;
 
-    public InboundEmailHelper(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField field, String patternStart, String patternEnd){
-        validateParameters(email, sObjectType, field);
+    public InboundEmailHelper(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField sObjectField, String patternStart, String patternEnd){
+        validateParameters(email, sObjectType, sObjectField);
 
         this.email = email;
         this.sObjectType = sObjectType;
-        this.field = field;
+        this.sObjectField = sObjectField;
         this.patternStart = patternStart != null ?  patternStart : DEFAULT_PATTERN_START;
         this.patternEnd = patternEnd != null ? patternEnd : DEFAULT_PATTERN_END;
     }
 
-    public InboundEmailHelper(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField field){
-        validateParameters(email, sObjectType, field);
+    public InboundEmailHelper(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField sObjectField){
+        validateParameters(email, sObjectType, sObjectField);
 
         this.email = email;
         this.sObjectType = sObjectType;
-        this.field = field;
+        this.sObjectField = sObjectField;
         this.patternStart = DEFAULT_PATTERN_START;
         this.patternEnd = DEFAULT_PATTERN_END;
     }
 
-    private InboundEmailHelper(){}
+    public InboundEmailHelper(Messaging.InboundEmail email){
+        validateParameters(email, Opportunity.SObjectType, Opportunity.Id);
+
+        this.email = email;
+        this.sObjectType = Opportunity.SObjectType;
+        this.sObjectField = Opportunity.Id;
+        this.patternStart = DEFAULT_PATTERN_START;
+        this.patternEnd = DEFAULT_PATTERN_END;
+    }
+
+    @testVisible
+    private InboundEmailHelper(){
+        this.email = new Messaging.InboundEmail();
+        this.sObjectType = Opportunity.SObjectType;
+        this.sObjectField = Opportunity.Id;
+        this.patternStart = DEFAULT_PATTERN_START;
+        this.patternEnd = DEFAULT_PATTERN_END;
+    }
 
     public void buildEmailMessage(){
 
-        String reference = findReference();
+        String reference = findReference(email);
         if(reference == null){
             System.debug('Inbound email did not contain a reference pattern matching what was configured. Exiting...');
             return;
@@ -43,8 +60,6 @@ public inherited sharing class InboundEmailHelper {
 
         emailMessage = new EmailMessage();
         //emailMessage.RelatedToId = opptyId;
-        
-        
         
         emailMessage.Status = '5'; // Draft
         emailMessage.FromAddress = email.fromAddress;
@@ -59,12 +74,12 @@ public inherited sharing class InboundEmailHelper {
 
         emailMessage.MessageDate = getMessageDate(email.headers);
 
-        Recipients toRecipients = InboundEmailHelper.findRecipients(email.toAddresses);
-        emailMessage.ToIds = toRecipients.idList;
-        emailMessage.ToAddress = String.join(toRecipients.addressList, ','); 
-        Recipients ccRecipients = InboundEmailHelper.findRecipients(email.ccAddresses);
-        emailMessage.CcIds = ccRecipients.idList;
-        emailMessage.CcAddress = String.join(ccRecipients.addressList, ',');  
+        // Recipients toRecipients = InboundEmailHelper.findRecipients(email.toAddresses);
+        // emailMessage.ToIds = toRecipients.idList;
+        // emailMessage.ToAddress = String.join(toRecipients.addressList, ','); 
+        // Recipients ccRecipients = InboundEmailHelper.findRecipients(email.ccAddresses);
+        // emailMessage.CcIds = ccRecipients.idList;
+        // emailMessage.CcAddress = String.join(ccRecipients.addressList, ',');  
         
         System.debug('emailMessage: ' +emailMessage);
 
@@ -77,6 +92,27 @@ public inherited sharing class InboundEmailHelper {
         // Create relations
         // TODO: List<EmailMessageRelation> relations = createEmailMessageRelations(emailMessage, fromId, toIds, ccIds);
         // insert relations;
+    }
+
+    @testVisible
+    private Id findRelatedToId(String reference, SObjectType sObjectType, SObjectField sObjectField){
+        String sObjectTypeName = sObjectType.getDescribe().getName();
+        String sObjectFieldName = sObjectField.getDescribe().getLocalName();
+        String query = String.format(
+            'SELECT Id FROM {0} WHERE {1} = :reference LIMIT 1', 
+            new List<String> {sObjectTypeName, sObjectFieldName});
+
+        List<SObject> results = Database.query(query);
+
+        if(results.isEmpty()){
+            System.debug('Did not find a matching '+sObjectTypeName+' record for the reference: ' + reference);
+            return null;
+        }
+
+        Id sObjId = results.get(0).Id;
+        System.debug('Found '+sObjectTypeName+' record: '+sObjId+' for the reference: ' + reference);
+        
+        return sObjId; 
     }
 
     private List<EmailMessageRelation> createEmailMessageRelations(EmailMessage emailMessage, Id fromId, List<Id> toIds, List<Id> ccIds){
@@ -95,110 +131,138 @@ public inherited sharing class InboundEmailHelper {
         return new List<EmailMessageRelation>();
     }
 
-    private void validateParameters(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField field){
-        if(email == null) throw new InvalidParameterValueException('email', String.valueOf(email));
-        if(sObjectType == null) throw new InvalidParameterValueException('sObjectType', String.valueOf(sObjectType));
-        if(field == null) throw new InvalidParameterValueException('field', String.valueOf(field));
+    private void validateParameters(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField sObjectField){
+        if(email == null) throw createInvalidParameterValueException('email', String.valueOf(email), 'Cannot be null.');
+        if(sObjectType == null) throw createInvalidParameterValueException('sObjectType', String.valueOf(sObjectType), 'Cannot be null.');
+        if(sObjectField == null) throw createInvalidParameterValueException('field', String.valueOf(sObjectField), 'Cannot be null.');
+        if(!sObjectField.getDescribe().isFilterable()) throw createInvalidParameterValueException('sObjectField', String.valueOf(sObjectField), 'Field must be filterable.');
     }
 
-    private String findReference(){
-        String ref = InboundEmailHelper.findReference(email.plainTextBody, patternStart, patternEnd);
-        if(String.isBlank(ref)){
-            ref = InboundEmailHelper.findReference(email.htmlBody, patternStart, patternEnd);
-        }
+    private InvalidParameterValueException createInvalidParameterValueException(String paramName, String paramValue, String message){
+        InvalidParameterValueException ex = new InvalidParameterValueException(paramName, paramValue);
+        ex.setMessage(String.format(
+            'paramName: {0} - paramValue: {1} - message: {2}', 
+            new List<String>{ paramName, paramValue, message }
+            ));
 
-        return ref;
+        return ex;
     }
 
     /*
     * Returns the reference or null if not found
     */ 
     @testVisible
-    private static String findReference(String body, String patternStart, String patternEnd){
+    private String findReference(Messaging.InboundEmail email){
+        String ref = findReference(email.plainTextBody, patternStart, patternEnd);
+        if(String.isBlank(ref)){
+            ref = findReference(email.htmlBody, patternStart, patternEnd);
+        }
+
+        return ref;
+    }
+
+    private String findReference(String body, String patternStart, String patternEnd){
         
         String reference;
 
         // Find the first part of the pattern or exit early
         String substringAfterPatternStart = body.substringAfter(patternStart);
-        System.debug(substringAfterPatternStart);
+        System.debug('substringAfterPatternStart: '+substringAfterPatternStart);
         if(!String.isBlank(substringAfterPatternStart)){
             reference = substringAfterPatternStart.substringBefore(patternEnd);
+            System.debug('reference: '+reference);
         }
 
         return reference;
     }
 
-    @testVisible
-    private static Recipients findRecipients(List<String> emailAddresses){
+    private SenderAndRecipients findSenderAndRecipients(){
 
-        // Search all person types by email
-        List<List<SObject>> results = [FIND :String.join(emailAddresses, ' OR ') IN EMAIL FIELDS RETURNING User(Email), Contact(Email), Lead(Email)];
-
-        // Map email addresses to person type Ids
-        Map<String, List<Id>> addressesWithMatchingIds = new Map<String, List<Id>>();
-        for (List<SObject> objects : results) {
-           for (SObject obj : objects) {
-                String emailAddress = (String) obj.get('Email');
-                if(addressesWithMatchingIds.containsKey(emailAddress)){
-                    addressesWithMatchingIds.get(emailAddress).add(obj.Id);
-                }else {
-                   addressesWithMatchingIds.put(emailAddress, new List<Id>{ obj.Id });
-                }
-           }
-        }
-
-        // Sort recipient email addresses based on whether the address had a matching record in any of the person types
-        Recipients recipients = new Recipients();
-        for (String emailAddress : emailAddresses) {
-            if(addressesWithMatchingIds.containsKey(emailAddress)){
-                recipients.idList.addAll(addressesWithMatchingIds.get(emailAddress));
-            }else {
-               recipients.addressList.add(emailAddress);
-            }
-        }
+        SenderAndRecipients recipients = new SenderAndRecipients();
+        EmailAddressSearchResult toAddressesSearchResult = searchEmailAddresses(email.toAddresses);
+        EmailAddressSearchResult ccAddressesSearchResult = searchEmailAddresses(email.ccAddresses);
+        recipients.fromIds = findFromIds(email.fromAddress);
+        recipients.toIdList = toAddressesSearchResult.idList;
+        recipients.toAddressList = toAddressesSearchResult.addressList;
+        recipients.ccIdList = ccAddressesSearchResult.idList;
+        recipients.ccAddressList = ccAddressesSearchResult.addressList;
 
         return recipients;
     }
 
+    private List<Id> findFromIds(String fromAddress){
+        return searchEmailAddresses(new List<String>{ fromAddress }).idList;
+    }
+
     @testVisible
-    private static Datetime getMessageDate(List<Messaging.InboundEmail.Header> headers){
+    private EmailAddressSearchResult searchEmailAddresses(List<String> emailAddresses){
+
+        // Convert to Set to avoid returning duplicate results
+        Set<String> addressSet = new Set<String>(emailAddresses);
+
+        // Search all person types by email - SOSL is too unreliable here...
+        List<SObject> allResults = new List<SObject>();
+        allResults.addAll([SELECT Id, Email FROM User WHERE Email IN: addressSet]);
+        allResults.addAll([SELECT Id, Email FROM Contact WHERE Email IN: addressSet]);
+        allResults.addAll([SELECT Id, Email FROM Lead WHERE Email IN: addressSet]);
+        System.debug(allResults);
+
+        // Map email addresses to person type Ids
+        Map<String, List<Id>> addressesWithMatchingIds = new Map<String, List<Id>>();
+        for (SObject obj : allResults) {
+
+            // We know that all the searched objects have an email field called "Email"
+            String emailAddress = (String) obj.get('Email');
+            if(addressesWithMatchingIds.containsKey(emailAddress)){
+                addressesWithMatchingIds.get(emailAddress).add(obj.Id);
+            }else {
+                addressesWithMatchingIds.put(emailAddress, new List<Id>{ obj.Id });
+            }
+        }
+
+        // Sort recipient email addresses based on whether the address had a matching record in any of the person types
+        EmailAddressSearchResult eaSearchResult = new EmailAddressSearchResult();
+        for (String emailAddress : addressSet) {
+            if(addressesWithMatchingIds.containsKey(emailAddress)){
+                eaSearchResult.idList.addAll(addressesWithMatchingIds.get(emailAddress));
+            }else {
+               eaSearchResult.addressList.add(emailAddress);
+            }
+        }
+        System.debug('eaSearchResult: '+eaSearchResult);
+        return eaSearchResult;
+    }
+
+    @testVisible
+    private Datetime getMessageDate(List<Messaging.InboundEmail.Header> headers){
+
+        // Cannot reliably parse the Date string from the header.
+        // Revert to Now() until another solution can be found.
         return Datetime.now();
     }
 
-    private List<Id> findToIds(List<String> toAddresses){
-        return findIdFromEmailAddress(toAddresses);
+    private class SenderAndRecipients {
+
+        public List<Id> fromIds { get; private set; }
+        public List<Id> toIdList { get; private set; }
+        public List<String> toAddressList { get; private set; }
+        public List<Id> ccIdList { get; private set; }
+        public List<String> ccAddressList { get; private set; }
+
+        public SenderAndRecipients(){
+            toIdList = new List<Id>();
+            toAddressList = new List<String>();
+            ccIdList = new List<Id>();
+            ccAddressList = new List<String>();
+        }
     }
 
-    
-
-    private List<Id> findIdFromEmailAddress(List<String> emailAddresses){
-        List<Id> idList = new List<Id>();
-        idList.addAll(new Map<Id, SObject>([SELECT Id FROM User WHERE Email IN: emailAddresses]).keySet());
-        idList.addAll(new Map<Id, SObject>([SELECT Id FROM Contact WHERE Email IN: emailAddresses]).keySet());
-        idList.addAll(new Map<Id, SObject>([SELECT Id FROM Lead WHERE Email IN: emailAddresses]).keySet());
-
-        System.debug('idList: ' +idList);
-
-        return idList;
-    }
-
-    private Id findFromId(String fromAddress){
-        List<Id> fromIds = new List<Id>();
-        fromIds.addAll(new Map<Id, SObject>([SELECT Id FROM User WHERE Email =: fromAddress]).keySet());
-        fromIds.addAll(new Map<Id, SObject>([SELECT Id FROM Contact WHERE Email =: fromAddress]).keySet());
-        fromIds.addAll(new Map<Id, SObject>([SELECT Id FROM Lead WHERE Email =: fromAddress]).keySet());
-
-        System.debug('toIds: ' +fromIds);
-
-        return fromIds.isEmpty() ? null : fromIds.get(0);
-    }
-
-    private class Recipients {
-
+    @testVisible
+    private class EmailAddressSearchResult {
         public List<Id> idList { get; private set; }
         public List<String> addressList { get; private set; }
 
-        public Recipients(){
+        public EmailAddressSearchResult(){
             idList = new List<Id>();
             addressList = new List<String>();
         }
