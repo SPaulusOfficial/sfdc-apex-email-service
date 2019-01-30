@@ -176,7 +176,8 @@ public inherited sharing class InboundEmailHelper {
         return reference;
     }
 
-    private SenderAndRecipients findSenderAndRecipients(){
+    @testVisible
+    private SenderAndRecipients findSenderAndRecipients(Messaging.InboundEmail email){
 
         SenderAndRecipients recipients = new SenderAndRecipients();
         EmailAddressSearchResult toAddressesSearchResult = searchEmailAddresses(email.toAddresses);
@@ -186,6 +187,8 @@ public inherited sharing class InboundEmailHelper {
         recipients.toAddressList = toAddressesSearchResult.addressList;
         recipients.ccIdList = ccAddressesSearchResult.idList;
         recipients.ccAddressList = ccAddressesSearchResult.addressList;
+
+        System.debug('recipients: '+recipients);
 
         return recipients;
     }
@@ -197,14 +200,18 @@ public inherited sharing class InboundEmailHelper {
     @testVisible
     private EmailAddressSearchResult searchEmailAddresses(List<String> emailAddresses){
 
+        System.debug('emailAddresses: '+emailAddresses);
+
         // Convert to Set to avoid returning duplicate results
         Set<String> addressSet = new Set<String>(emailAddresses);
 
+        System.debug('addressSet: '+addressSet);
+
         // Search all person types by email - SOSL is too unreliable here...
         List<SObject> allResults = new List<SObject>();
-        allResults.addAll([SELECT Id, Email FROM User WHERE Email IN: addressSet]);
-        allResults.addAll([SELECT Id, Email FROM Contact WHERE Email IN: addressSet]);
-        allResults.addAll([SELECT Id, Email FROM Lead WHERE Email IN: addressSet]);
+        allResults.addAll([SELECT Id, Email FROM User WHERE Email IN: addressSet AND Email != null]);
+        allResults.addAll([SELECT Id, Email FROM Contact WHERE Email IN: addressSet AND Email != null]);
+        allResults.addAll([SELECT Id, Email FROM Lead WHERE Email IN: addressSet AND Email != null]);
         System.debug(allResults);
 
         // Map email addresses to person type Ids
@@ -220,15 +227,24 @@ public inherited sharing class InboundEmailHelper {
             }
         }
 
+        System.debug('addressesWithMatchingIds: '+addressesWithMatchingIds);
+
         // Sort recipient email addresses based on whether the address had a matching record in any of the person types
         EmailAddressSearchResult eaSearchResult = new EmailAddressSearchResult();
         for (String emailAddress : addressSet) {
+
+            // Lowercase email to be able to match
+            emailAddress = emailAddress.toLowerCase();
+            
             if(addressesWithMatchingIds.containsKey(emailAddress)){
+                System.debug('addressesWithMatchingIds contained: '+emailAddress);
                 eaSearchResult.idList.addAll(addressesWithMatchingIds.get(emailAddress));
             }else {
-               eaSearchResult.addressList.add(emailAddress);
+                System.debug('addressesWithMatchingIds did not contain: '+emailAddress);
+                eaSearchResult.addressList.add(emailAddress);
             }
         }
+
         System.debug('eaSearchResult: '+eaSearchResult);
         return eaSearchResult;
     }
@@ -241,6 +257,7 @@ public inherited sharing class InboundEmailHelper {
         return Datetime.now();
     }
 
+    @testVisible
     private class SenderAndRecipients {
 
         public List<Id> fromIds { get; private set; }

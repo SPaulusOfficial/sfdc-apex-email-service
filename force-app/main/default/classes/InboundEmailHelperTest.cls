@@ -109,16 +109,16 @@ private class InboundEmailHelperTest {
     }
 
     @isTest static void test_SearchEmailAddresses(){
-        Contact c = new Contact(LastName = 'testContact', Email = 'test@test.com');
+        Contact c = createContact();
         insert c;
         
-        Lead l = new Lead(LastName = 'testLead', Email = 'test@test.com', Company = 'testCompany');
+        Lead l = createLead();
         insert l;
 
-        Contact c2 = new Contact(LastName = 'testContact2', Email = 'test@test2.com');
+        Contact c2 = createContact();
         insert c2;
 
-        User u = createTestUser('testUser', 'test@test.com', 'randomtest@test.com');
+        User u = createTestUser();
         insert u;
 
         InboundEmailHelper helper = new InboundEmailHelper();
@@ -133,7 +133,45 @@ private class InboundEmailHelperTest {
         System.assert(result.addressList.contains('emailnotinsalesforce@test.com'));
     }
 
-    @isTest static void test_findRelatedToId_OpportunityStageName(){
+    @isTest static void test_FindSenderAndRecipients(){
+        Contact c = createContact();
+        insert c;
+
+        Contact c2 = createContact();
+        insert c2;
+
+        Contact c3 = createContact();
+        insert c3;
+
+        User u = createTestUser();
+        insert u;
+
+        Messaging.InboundEmail email = new Messaging.InboundEmail();
+        email.fromAddress = u.Email;
+        email.toAddresses = new List<String>{ c.Email, c2.Email, 'randomemail@test.com' };
+        email.ccAddresses = new List<String>{ 'randomemail2@test.com', c3.Email };
+        InboundEmailHelper helper = new InboundEmailHelper(email);
+
+        InboundEmailHelper.SenderAndRecipients result = helper.findSenderAndRecipients(email);
+        
+        System.assertEquals(1, result.fromIds.size());
+        System.assert(result.fromIds.contains(u.Id));
+
+        System.assertEquals(2, result.toIdList.size());
+        System.assert(result.toIdList.contains(c.Id));
+        System.assert(result.toIdList.contains(c2.Id));
+
+        System.assertEquals(1, result.toAddressList.size());
+        System.assert(result.toAddressList.contains('randomemail@test.com'));
+
+        System.assertEquals(1, result.ccIdList.size());
+        System.assert(result.ccIdList.contains(c3.Id));
+
+        System.assertEquals(1, result.ccAddressList.size());
+        System.assert(result.ccAddressList.contains('randomemail2@test.com'));
+    }
+
+    @isTest static void test_findRelatedToId_OpportunityNextStep(){
         InboundEmailHelper helper = new InboundEmailHelper();
         Opportunity oppty = createOpportunity('testOpp');
         oppty.NextStep = 'testStep';
@@ -154,7 +192,7 @@ private class InboundEmailHelperTest {
         System.assertEquals(expected, actual);
     }
 
-    @isTest static void test_findRelatedToId_Account(){
+    @isTest static void test_findRelatedToId_AccountSic(){
         InboundEmailHelper helper = new InboundEmailHelper();
         Account acc = new Account(Name = 'testAcc', Sic = 'testSic');
         insert acc;
@@ -190,12 +228,12 @@ private class InboundEmailHelperTest {
 
     /******************************* HELPERS *************************************************************/
 
-    private static User createTestUser(String lastName, String emailAddress, String userName){
+    private static User createTestUser(){
         Profile p = [SELECT Id FROM Profile WHERE Name='Standard User'];
-        User u = new User(Alias = 'standt', Email=emailAddress, 
-            EmailEncodingKey='UTF-8', LastName=lastName, LanguageLocaleKey='en_US', 
+        User u = new User(Alias = 'standt', Email=generateRandomEmail(), 
+            EmailEncodingKey='UTF-8', LastName=generateRandomString(10), LanguageLocaleKey='en_US', 
             LocaleSidKey='en_US', ProfileId = p.Id, 
-            TimeZoneSidKey='America/Los_Angeles', UserName=userName
+            TimeZoneSidKey='America/Los_Angeles', UserName=generateRandomEmail()
         );
 
         return u;
@@ -209,5 +247,40 @@ private class InboundEmailHelperTest {
         );
 
         return oppty;
+    }
+
+    private static Contact createContact(){
+        Contact c = new Contact(
+            LastName = generateRandomString(10),
+            Email = generateRandomEmail()
+        );
+
+        return c;
+    }
+    
+    private static Lead createLead(){
+        Lead l = new Lead(
+            LastName = generateRandomString(10),
+            Email = generateRandomEmail(),
+            Company = generateRandomString(10)
+        );
+
+        return l;
+    }
+
+    private static String generateRandomString(Integer len) {
+        final String chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz';
+        String randStr = '';
+        while (randStr.length() < len) {
+            Integer idx = Math.mod(Math.abs(Crypto.getRandomInteger()), chars.length());
+            randStr += chars.substring(idx, idx+1);
+        }
+        return randStr; 
+    }
+
+    private static String generateRandomEmail(){
+        return String.format(
+            '{0}@{1}.{2}', 
+            new List<String>{ generateRandomString(10), generateRandomString(10), generateRandomString(3) });
     }
 }
