@@ -110,16 +110,11 @@ private class InboundEmailHelperTest {
 
     @isTest static void test_SearchEmailAddresses(){
         Contact c = createContact();
-        insert c;
-        
         Lead l = createLead();
-        insert l;
-
         Contact c2 = createContact();
-        insert c2;
-
         User u = createTestUser();
-        insert u;
+
+        insert new List<SObject>{ c, l, c2, u };
 
         InboundEmailHelper helper = new InboundEmailHelper();
         InboundEmailHelper.EmailAddressSearchResult result = helper.searchEmailAddresses(new List<String>{ c.Email, l.Email, c2.Email, u.Email, 'emailnotinsalesforce@test.com' });
@@ -135,16 +130,11 @@ private class InboundEmailHelperTest {
 
     @isTest static void test_FindSenderAndRecipients(){
         Contact c = createContact();
-        insert c;
-
         Contact c2 = createContact();
-        insert c2;
-
         Contact c3 = createContact();
-        insert c3;
-
         User u = createTestUser();
-        insert u;
+
+        insert new List<SObject>{ c, c2, c3, u };
 
         Messaging.InboundEmail email = new Messaging.InboundEmail();
         email.fromAddress = u.Email;
@@ -154,8 +144,8 @@ private class InboundEmailHelperTest {
 
         InboundEmailHelper.SenderAndRecipients result = helper.findSenderAndRecipients(email);
         
-        System.assertEquals(1, result.fromIds.size());
-        System.assert(result.fromIds.contains(u.Id));
+        System.assertEquals(1, result.fromIdList.size());
+        System.assert(result.fromIdList.contains(u.Id));
 
         System.assertEquals(2, result.toIdList.size());
         System.assert(result.toIdList.contains(c.Id));
@@ -215,15 +205,62 @@ private class InboundEmailHelperTest {
     @isTest static void test_findRelatedToId_FindsAmongMultiple(){
         InboundEmailHelper helper = new InboundEmailHelper();
         Account acc = new Account(Name = 'testAcc', Sic = 'testSic');
-        insert acc;
         Account acc2 = new Account(Name = 'testAcc2', Sic = 'testSic2');
-        insert acc2;
         Account acc3 = new Account(Name = 'testAcc3', Sic = 'testSic3');
-        insert acc3;
+
+        insert new List<SObject>{ acc, acc2, acc3 };
 
         Id expected = acc2.Id;
         Id actual = helper.findRelatedToId('testSic2', Account.SObjectType, Account.Sic);
         System.assertEquals(expected, actual);
+    }
+
+    @isTest static void test_createEmailMessageRelations(){
+        Contact c = createContact();
+        Contact c2 = createContact();
+        Contact c3 = createContact();
+        User u = createTestUser();
+
+        insert new List<SObject>{ c, c2, c3, u };
+
+        EmailMessage emailMessage = new EmailMessage();
+        insert emailMessage;
+
+        InboundEmailHelper.SenderAndRecipients sar = new InboundEmailHelper.SenderAndRecipients();
+        sar.fromIdList.add(u.Id);
+        sar.toIdList.addAll(new List<Id>{ c.Id, c2.Id });
+        sar.ccIdList.add(c3.Id);
+
+        Test.startTest();
+
+        InboundEmailHelper helper = new InboundEmailHelper();
+        helper.createEmailMessageRelations(emailMessage, sar);
+
+        Test.stopTest();
+        
+        // Map by relationId to be able to assert
+        Map<Id, EmailMessageRelation> relationMap = new Map<Id, EmailMessageRelation>();
+        for(EmailMessageRelation relation : [
+            SELECT RelationId, RelationType
+            FROM EmailMessageRelation
+            WHERE EmailMessageId = :emailMessage.Id
+        ]){
+            relationMap.put(relation.RelationId, relation);
+        }
+
+        System.assertEquals(4, relationMap.size());
+
+        System.assert(relationMap.containsKey(c.Id));
+        System.assertEquals(InboundEmailHelper.EMAIL_MESSAGE_RELATION_TYPE_TOADDRESS, relationMap.get(c.Id).RelationType);
+
+        System.assert(relationMap.containsKey(c2.Id));
+        System.assertEquals(InboundEmailHelper.EMAIL_MESSAGE_RELATION_TYPE_TOADDRESS, relationMap.get(c2.Id).RelationType);
+
+        System.assert(relationMap.containsKey(c3.Id));
+        System.assertEquals(InboundEmailHelper.EMAIL_MESSAGE_RELATION_TYPE_TOADDRESS, relationMap.get(c3.Id).RelationType);
+
+        System.assert(relationMap.containsKey(u.Id));
+        System.assertEquals(InboundEmailHelper.EMAIL_MESSAGE_RELATION_TYPE_FROMADDRESS, relationMap.get(u.Id).RelationType);
     }
 
     /******************************* HELPERS *************************************************************/

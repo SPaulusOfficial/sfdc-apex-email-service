@@ -1,8 +1,12 @@
 public inherited sharing class InboundEmailHelper {
 
+    public static final String EMAIL_MESSAGE_RELATION_TYPE_FROMADDRESS = 'FromAddress';
+    public static final String EMAIL_MESSAGE_RELATION_TYPE_TOADDRESS = 'ToAddress';
+
     private static final String DEFAULT_PATTERN_START = 'ref:';
     private static final String DEFAULT_PATTERN_END = ':ref';
-    private Messaging.InboundEmail email;
+    
+    private Messaging.InboundEmail inboundEmail;
     private SObjectType sObjectType;
     private SObjectField sObjectField;
     private String patternStart;
@@ -11,30 +15,30 @@ public inherited sharing class InboundEmailHelper {
     @testVisible
     private EmailMessage emailMessage;
 
-    public InboundEmailHelper(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField sObjectField, String patternStart, String patternEnd){
-        validateParameters(email, sObjectType, sObjectField);
+    public InboundEmailHelper(Messaging.InboundEmail inboundEmail, SObjectType sObjectType, SObjectField sObjectField, String patternStart, String patternEnd){
+        validateParameters(inboundEmail, sObjectType, sObjectField);
 
-        this.email = email;
+        this.inboundEmail = inboundEmail;
         this.sObjectType = sObjectType;
         this.sObjectField = sObjectField;
         this.patternStart = patternStart != null ?  patternStart : DEFAULT_PATTERN_START;
         this.patternEnd = patternEnd != null ? patternEnd : DEFAULT_PATTERN_END;
     }
 
-    public InboundEmailHelper(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField sObjectField){
-        validateParameters(email, sObjectType, sObjectField);
+    public InboundEmailHelper(Messaging.InboundEmail inboundEmail, SObjectType sObjectType, SObjectField sObjectField){
+        validateParameters(inboundEmail, sObjectType, sObjectField);
 
-        this.email = email;
+        this.inboundEmail = inboundEmail;
         this.sObjectType = sObjectType;
         this.sObjectField = sObjectField;
         this.patternStart = DEFAULT_PATTERN_START;
         this.patternEnd = DEFAULT_PATTERN_END;
     }
 
-    public InboundEmailHelper(Messaging.InboundEmail email){
-        validateParameters(email, Opportunity.SObjectType, Opportunity.Id);
+    public InboundEmailHelper(Messaging.InboundEmail inboundEmail){
+        validateParameters(inboundEmail, Opportunity.SObjectType, Opportunity.Id);
 
-        this.email = email;
+        this.inboundEmail = inboundEmail;
         this.sObjectType = Opportunity.SObjectType;
         this.sObjectField = Opportunity.Id;
         this.patternStart = DEFAULT_PATTERN_START;
@@ -43,7 +47,7 @@ public inherited sharing class InboundEmailHelper {
 
     @testVisible
     private InboundEmailHelper(){
-        this.email = new Messaging.InboundEmail();
+        this.inboundEmail = new Messaging.InboundEmail();
         this.sObjectType = Opportunity.SObjectType;
         this.sObjectField = Opportunity.Id;
         this.patternStart = DEFAULT_PATTERN_START;
@@ -52,35 +56,32 @@ public inherited sharing class InboundEmailHelper {
 
     public void buildEmailMessage(){
 
-        String reference = findReference(email);
+        String reference = findReference(inboundEmail);
         if(reference == null){
             System.debug('Inbound email did not contain a reference pattern matching what was configured. Exiting...');
             return;
         }
 
         emailMessage = new EmailMessage();
-        //emailMessage.RelatedToId = opptyId;
+        emailMessage.RelatedToId = findRelatedToId(reference, sObjectType, sObjectField);
         
         emailMessage.Status = '5'; // Draft
-        emailMessage.FromAddress = email.fromAddress;
-        emailMessage.FromName = email.fromName;
-        emailMessage.Subject = email.subject;
-        emailMessage.TextBody = email.plainTextBody;
-        emailMessage.HtmlBody = email.htmlBody;
-        emailMessage.MessageIdentifier = email.messageId;
+        emailMessage.FromAddress = inboundEmail.fromAddress;
+        emailMessage.FromName = inboundEmail.fromName;
+        emailMessage.Subject = inboundEmail.subject;
+        emailMessage.TextBody = inboundEmail.plainTextBody;
+        emailMessage.HtmlBody = inboundEmail.htmlBody;
+        emailMessage.MessageIdentifier = inboundEmail.messageId;
+        emailMessage.MessageDate = getMessageDate(inboundEmail.headers);
+        
+        SenderAndRecipients senderAndRecipients = findSenderAndRecipients(inboundEmail);
+        emailMessage.ToIds = senderAndRecipients.toIdList;
+        emailMessage.ToAddress = String.join(senderAndRecipients.toAddressList, ','); 
+        emailMessage.CcIds = senderAndRecipients.ccIdList;
+        emailMessage.CcAddress = String.join(senderAndRecipients.ccAddressList, ',');  
         
         //emailMessage.ReplyToEmailMessageId // TODO: Is this needed?
         //emailMessage.ThreadIdentifier //TODO: Is this needed?
-
-        emailMessage.MessageDate = getMessageDate(email.headers);
-
-        // Recipients toRecipients = InboundEmailHelper.findRecipients(email.toAddresses);
-        // emailMessage.ToIds = toRecipients.idList;
-        // emailMessage.ToAddress = String.join(toRecipients.addressList, ','); 
-        // Recipients ccRecipients = InboundEmailHelper.findRecipients(email.ccAddresses);
-        // emailMessage.CcIds = ccRecipients.idList;
-        // emailMessage.CcAddress = String.join(ccRecipients.addressList, ',');  
-        
         System.debug('emailMessage: ' +emailMessage);
 
         insert emailMessage;
@@ -90,8 +91,9 @@ public inherited sharing class InboundEmailHelper {
         update emailMessage;
 
         // Create relations
-        // TODO: List<EmailMessageRelation> relations = createEmailMessageRelations(emailMessage, fromId, toIds, ccIds);
-        // insert relations;
+        createEmailMessageRelations(emailMessage, senderAndRecipients);
+
+        // TODO - maybe notify?
     }
 
     @testVisible
@@ -100,7 +102,8 @@ public inherited sharing class InboundEmailHelper {
         String sObjectFieldName = sObjectField.getDescribe().getLocalName();
         String query = String.format(
             'SELECT Id FROM {0} WHERE {1} = :reference LIMIT 1', 
-            new List<String> {sObjectTypeName, sObjectFieldName});
+            new List<String> {sObjectTypeName, sObjectFieldName}
+            );
 
         List<SObject> results = Database.query(query);
 
@@ -115,24 +118,44 @@ public inherited sharing class InboundEmailHelper {
         return sObjId; 
     }
 
-    private List<EmailMessageRelation> createEmailMessageRelations(EmailMessage emailMessage, Id fromId, List<Id> toIds, List<Id> ccIds){
-        // EmailMessageRelation emr = new EmailMessageRelation();
-        // emr.emailMessageId = emailMessage.Id;
-        // emr.relationId = '0056E000004dMZHQA2'; // user id of the sender
-        // emr.relationType = 'ToAddress';
-        // insert emr;
+    @testVisible
+    private void createEmailMessageRelations(EmailMessage emailMessage, SenderAndRecipients senderAndRecipients){
 
-        // EmailMessageRelation emr2 = new EmailMessageRelation();
-        // emr2.emailMessageId = emailMessage.Id;
-        // emr2.relationId = '0036E00000WUkw6QAD'; // user id of the sender
-        // emr2.relationType = 'FromAddress';
-        // insert emr2;
+        List<EmailMessageRelation> relations = new List<EmailMessageRelation>();
 
-        return new List<EmailMessageRelation>();
+        // Create relations for receivers
+        for (Id toId: senderAndRecipients.toIdList) {
+           relations.add(
+               createEmailMessageRelation(emailMessage.Id, toId, EMAIL_MESSAGE_RELATION_TYPE_TOADDRESS)
+               );
+        }
+        for (Id ccId : senderAndRecipients.ccIdList) {
+           relations.add(
+               createEmailMessageRelation(emailMessage.Id, ccId, EMAIL_MESSAGE_RELATION_TYPE_TOADDRESS)
+               );
+        }
+
+        // Create relations for senders
+        for (Id fromId : senderAndRecipients.fromIdList) {
+           relations.add(
+               createEmailMessageRelation(emailMessage.Id, fromId, EMAIL_MESSAGE_RELATION_TYPE_FROMADDRESS)
+               );
+        }
+
+        insert relations;
     }
 
-    private void validateParameters(Messaging.InboundEmail email, SObjectType sObjectType, SObjectField sObjectField){
-        if(email == null) throw createInvalidParameterValueException('email', String.valueOf(email), 'Cannot be null.');
+    private EmailMessageRelation createEmailMessageRelation(Id emailMessageId, Id relationId, String relationType){
+        
+        EmailMessageRelation emr = new EmailMessageRelation();
+        emr.emailMessageId = emailMessageId;
+        emr.relationId = relationId;
+        emr.relationType = relationType;
+        return emr;
+    }
+
+    private void validateParameters(Messaging.InboundEmail inboundEmail, SObjectType sObjectType, SObjectField sObjectField){
+        if(inboundEmail == null) throw createInvalidParameterValueException('inboundEmail', String.valueOf(inboundEmail), 'Cannot be null.');
         if(sObjectType == null) throw createInvalidParameterValueException('sObjectType', String.valueOf(sObjectType), 'Cannot be null.');
         if(sObjectField == null) throw createInvalidParameterValueException('field', String.valueOf(sObjectField), 'Cannot be null.');
         if(!sObjectField.getDescribe().isFilterable()) throw createInvalidParameterValueException('sObjectField', String.valueOf(sObjectField), 'Field must be filterable.');
@@ -182,7 +205,7 @@ public inherited sharing class InboundEmailHelper {
         SenderAndRecipients recipients = new SenderAndRecipients();
         EmailAddressSearchResult toAddressesSearchResult = searchEmailAddresses(email.toAddresses);
         EmailAddressSearchResult ccAddressesSearchResult = searchEmailAddresses(email.ccAddresses);
-        recipients.fromIds = findFromIds(email.fromAddress);
+        recipients.fromIdList = findFromIds(email.fromAddress);
         recipients.toIdList = toAddressesSearchResult.idList;
         recipients.toAddressList = toAddressesSearchResult.addressList;
         recipients.ccIdList = ccAddressesSearchResult.idList;
@@ -260,13 +283,14 @@ public inherited sharing class InboundEmailHelper {
     @testVisible
     private class SenderAndRecipients {
 
-        public List<Id> fromIds { get; private set; }
+        public List<Id> fromIdList { get; private set; }
         public List<Id> toIdList { get; private set; }
         public List<String> toAddressList { get; private set; }
         public List<Id> ccIdList { get; private set; }
         public List<String> ccAddressList { get; private set; }
 
         public SenderAndRecipients(){
+            fromIdList = new List<Id>();
             toIdList = new List<Id>();
             toAddressList = new List<String>();
             ccIdList = new List<Id>();
